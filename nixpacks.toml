@@ -6,7 +6,7 @@ NIXPACKS_PYTHON_VERSION = "3.11"
 PYTHONUNBUFFERED = "1"
 
 [phases.setup]
-nixPkgs = ["python311", "gcc"]
+nixPkgs = ["python311", "gcc", "libGL", "glib", "xorg.libX11", "xorg.libxcb", "zlib"]
 
 [phases.install]
 cmds = [
