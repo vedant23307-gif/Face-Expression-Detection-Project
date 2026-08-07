@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-High-Performance FastAPI Facial Emotion Web Server
-Fixed Tracking Engine: Zero Ghost Boxes (Instant removal when face moves) + Smooth Following.
+High-Performance FastAPI Facial Emotion Web Server (Cloud & Local Compatible)
+Supports Client-Side Web Camera Frame Processing (/api/process_frame) for Render/Cloud servers,
+and local webcam video streaming (/video_feed).
 """
 
 import os
@@ -9,10 +10,12 @@ import sys
 import cv2
 import time
 import json
+import base64
 import numpy as np
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 try:
     import tensorflow as tf
@@ -41,32 +44,14 @@ fer_detector = FER(mtcnn=False)
 # Strict Haar Face Cascade for noise suppression
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
-# Global Telemetry State
-telemetry_state = {
-    "dominant": "Neutral",
-    "confidence": 100,
-    "emotions": {
-        "happy": 0.0,
-        "surprise": 0.0,
-        "neutral": 1.0,
-        "sad": 0.0,
-        "angry": 0.0,
-        "fear": 0.0,
-        "disgust": 0.0
-    },
-    "active_faces": 0,
-    "fps": 30
-}
+class FramePayload(BaseModel):
+    image: str  # Base64 data URL
 
 class FastFaceTracker:
-    """
-    Zero-Ghost Face Tracking Engine.
-    Instantly erases old bounding boxes when face moves away and smoothly tracks moving face.
-    """
-    def __init__(self, alpha=0.50, min_face_size=110):
+    def __init__(self, alpha=0.50, min_face_size=100):
         self.alpha = alpha
         self.min_face_size = min_face_size
-        self.tracked_faces = {}  # fid -> {box, emotion, score, all_emotions}
+        self.tracked_faces = {}
         self.next_id = 1
 
     def compute_iou(self, boxA, boxB):
@@ -119,7 +104,6 @@ class FastFaceTracker:
     def process(self, frame):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         
-        # Detect faces with strict minNeighbors=7
         faces = face_cascade.detectMultiScale(
             gray,
             scaleFactor=1.15,
@@ -149,19 +133,17 @@ class FastFaceTracker:
             score = emo_scores[max(emo_scores, key=emo_scores.get)] * 100.0
 
             raw_candidates.append({
-                'box': (x, y, w, h),
+                'box': (int(x), int(y), int(w), int(h)),
                 'emotion': dom_emotion,
-                'score': score,
-                'all_emotions': emo_scores
+                'score': float(score),
+                'all_emotions': {k: float(v) for k, v in emo_scores.items()}
             })
 
         valid_candidates = self.suppress_sub_patches(raw_candidates)
 
-        # ZERO GHOST BOXES: Create fresh active state per frame
         new_tracked = {}
         used_cand_indices = set()
 
-        # Match new candidate boxes to existing tracked faces
         for fid, tf_data in self.tracked_faces.items():
             best_iou = 0.0
             best_idx = None
@@ -174,7 +156,6 @@ class FastFaceTracker:
                     best_idx = idx
 
             if best_idx is not None and best_iou >= 0.15:
-                # Face matched! Smooth position
                 px, py, pw, ph = tf_data['box']
                 cx, cy, cw, ch = valid_candidates[best_idx]['box']
                 sx = int(self.alpha * cx + (1 - self.alpha) * px)
@@ -190,7 +171,6 @@ class FastFaceTracker:
                 }
                 used_cand_indices.add(best_idx)
 
-        # Add any new unassigned faces
         for idx, cand in enumerate(valid_candidates):
             if idx not in used_cand_indices:
                 new_id = self.next_id
@@ -204,103 +184,66 @@ class FastFaceTracker:
 
         self.tracked_faces = new_tracked
 
-        # Active output list
         active_output = []
         for fid, data in self.tracked_faces.items():
             active_output.append((data['box'], data['emotion'], data['score'], data['all_emotions']))
 
         return active_output
 
-tracker = FastFaceTracker(alpha=0.50, min_face_size=110)
-
-color_map = {
-    'happy': (16, 185, 129),      # Green
-    'surprise': (246, 130, 59),   # Orange
-    'neutral': (139, 92, 246),   # Purple
-    'sad': (100, 116, 184),      # Slate
-    'angry': (239, 68, 68),       # Red
-    'fear': (245, 158, 11),       # Amber
-    'disgust': (20, 184, 166)     # Teal
-}
-
-def generate_video_stream():
-    global telemetry_state
-    cam = cv2.VideoCapture(0)
-    if not cam.isOpened():
-        print("❌ Error opening video stream")
-        return
-
-    prev_time = time.time()
-
-    while True:
-        success, frame = cam.read()
-        if not success or frame is None:
-            break
-
-        # Flip horizontally for natural selfie view
-        frame = cv2.flip(frame, 1)
-
-        active_faces = tracker.process(frame)
-
-        curr_time = time.time()
-        fps = 1.0 / (curr_time - prev_time + 1e-5)
-        prev_time = curr_time
-
-        dominant = "Neutral"
-        score = 100.0
-        emotions_dict = {'happy': 0.0, 'surprise': 0.0, 'neutral': 1.0, 'sad': 0.0, 'angry': 0.0, 'fear': 0.0, 'disgust': 0.0}
-
-        for (box, emotion, sc, all_emotions) in active_faces:
-            (x, y, w, h) = box
-            color = color_map.get(emotion.lower(), (255, 255, 255))
-            dominant = emotion
-            score = sc
-            emotions_dict = all_emotions
-
-            # Draw Clean Face Bounding Box
-            cv2.rectangle(frame, (x, y), (x + w, y + h), color, 3)
-
-            # Draw Crisp Emotion Tag Badge
-            badge_text = f"{emotion} ({score:.0f}%)"
-            (text_w, text_h), _ = cv2.getTextSize(badge_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
-            
-            badge_y1 = max(0, y - text_h - 15)
-            badge_y2 = y
-            cv2.rectangle(frame, (x, badge_y1), (x + text_w + 20, badge_y2), color, -1)
-            cv2.putText(frame, badge_text, (x + 10, y - 8),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-
-        telemetry_state["dominant"] = dominant
-        telemetry_state["confidence"] = round(score)
-        telemetry_state["emotions"] = emotions_dict
-        telemetry_state["active_faces"] = len(active_faces)
-        telemetry_state["fps"] = round(fps)
-
-        ret, buffer = cv2.imencode('.jpg', frame)
-        frame_bytes = buffer.tobytes()
-
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-
-    cam.release()
+tracker = FastFaceTracker(alpha=0.50, min_face_size=100)
 
 @app.get("/", response_class=FileResponse)
 async def read_index():
     return FileResponse(os.path.join(BASE_DIR, "index.html"))
 
-@app.get("/video_feed")
-async def video_feed():
-    return StreamingResponse(generate_video_stream(), media_type="multipart/x-mixed-replace; boundary=frame")
+@app.post("/api/process_frame")
+async def process_frame(payload: FramePayload):
+    """
+    Cloud API Endpoint: Accepts client-side camera Base64 frame, runs TensorFlow AI model,
+    and returns bounding box coordinates + emotion probabilities.
+    """
+    try:
+        header, encoded = payload.image.split(",", 1)
+        data = base64.b64decode(encoded)
+        nparr = np.frombuffer(data, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-@app.get("/api/emotion_data")
-async def get_emotion_data():
-    return JSONResponse(content=telemetry_state)
+        if frame is None:
+            return JSONResponse(content={"has_face": False, "faces": []})
+
+        active_faces = tracker.process(frame)
+
+        face_list = []
+        dominant = "Neutral"
+        score = 100.0
+        emotions_dict = {'happy': 0.0, 'surprise': 0.0, 'neutral': 1.0, 'sad': 0.0, 'angry': 0.0, 'fear': 0.0, 'disgust': 0.0}
+
+        for (box, emotion, sc, all_emotions) in active_faces:
+            dominant = emotion
+            score = sc
+            emotions_dict = all_emotions
+            face_list.append({
+                "box": list(box),
+                "emotion": emotion,
+                "confidence": round(sc)
+            })
+
+        return JSONResponse(content={
+            "has_face": len(face_list) > 0,
+            "faces": face_list,
+            "dominant": dominant,
+            "confidence": round(score),
+            "emotions": emotions_dict,
+            "active_faces": len(face_list)
+        })
+    except Exception as e:
+        return JSONResponse(content={"has_face": False, "error": str(e)})
 
 if __name__ == "__main__":
     import uvicorn
+    port = int(os.environ.get("PORT", 8000))
     print("==================================================")
-    print(" 🚀 TensorFlow Web AI Dashboard Server")
-    print(" Engine: Zero-Ghost Fast Face Tracker")
-    print(" URL: http://localhost:8000")
+    print(" 🚀 Cloud TensorFlow Facial Emotion AI Server")
+    print(f" Port: {port}")
     print("==================================================")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=port)

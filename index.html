@@ -33,7 +33,7 @@
     <div class="nav-actions">
       <div class="status-badge">
         <span class="pulse-dot"></span>
-        <span>TensorFlow Stream Active</span>
+        <span>TensorFlow Cloud AI Active</span>
       </div>
     </div>
   </header>
@@ -41,18 +41,19 @@
   <!-- Main App Layout Container -->
   <main class="app-container">
     
-    <!-- Left Column: TensorFlow Video Viewport & Controls -->
+    <!-- Left Column: Camera Viewport & Controls -->
     <section class="stage-card">
       <div class="stage-header">
         <h2 class="stage-title">
-          <i class="fas fa-video"></i> Live TensorFlow Model Stream
+          <i class="fas fa-video"></i> Live Laptop Web Camera Stream
         </h2>
         <span class="badge-tech" style="background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.3); color: #10b981;">Target Box Active</span>
       </div>
 
-      <!-- Viewport Wrapper (Renders High-Accuracy TensorFlow Stream) -->
+      <!-- Viewport Wrapper (HTML5 Video + Bounding Box Canvas) -->
       <div class="viewport-wrapper">
-        <img id="tf-video-stream" src="/video_feed" style="width: 100%; height: 100%; object-fit: cover;" alt="TensorFlow AI Stream">
+        <video id="webcam" autoplay playsinline muted></video>
+        <canvas id="canvas-overlay"></canvas>
 
         <!-- Live Floating Emotion Overlay -->
         <div class="live-emotion-overlay">
@@ -88,7 +89,7 @@
     <!-- Right Column: Sidebar Analytics Panel -->
     <aside class="analytics-panel">
       
-      <!-- Emotion Spectrum Progress Card (Synced directly with TensorFlow AI model API) -->
+      <!-- Emotion Spectrum Progress Card -->
       <div class="panel-card">
         <h3 class="panel-title">
           <span><i class="fas fa-chart-bar" style="color: var(--primary);"></i> Emotion Spectrum</span>
@@ -184,51 +185,145 @@
     <p>Vedant &bull; Facial Expression Detection Project &bull; Powered by TensorFlow / Keras & FastAPI</p>
   </footer>
 
-  <!-- Telemetry Polling Script (Direct sync with TensorFlow model) -->
+  <!-- Hidden Processing Canvas -->
+  <canvas id="proc-canvas" style="display: none;"></canvas>
+
+  <!-- Cloud Web Camera Stream Engine -->
   <script>
     const emojiMap = {
       'Happy': '😄', 'Surprise': '😲', 'Neutral': '😐', 
       'Sad': '😢', 'Angry': '😠', 'Fear': '😨', 'Disgust': '🤢'
     };
 
-    async function syncTensorFlowData() {
+    const colorMap = {
+      'Happy': '#10b981', 'Surprise': '#f97316', 'Neutral': '#8b5cf6',
+      'Sad': '#64748b', 'Angry': '#ef4444', 'Fear': '#f59e0b', 'Disgust': '#14b8a6'
+    };
+
+    const videoElement = document.getElementById('webcam');
+    const canvasElement = document.getElementById('canvas-overlay');
+    const ctx = canvasElement.getContext('2d');
+    const procCanvas = document.getElementById('proc-canvas');
+    const procCtx = procCanvas.getContext('2d');
+
+    let isProcessing = false;
+    let lastTime = performance.now();
+
+    async function initWebcam() {
       try {
-        const res = await fetch('/api/emotion_data');
-        if (!res.ok) return;
-        const data = await res.json();
-
-        // Update Dominant Emotion Metrics
-        const dom = data.dominant || 'Neutral';
-        const conf = data.confidence || 0;
-        const emoji = emojiMap[dom] || '😐';
-
-        document.getElementById('metric-dominant').textContent = dom;
-        document.getElementById('metric-confidence').textContent = `${conf}%`;
-        document.getElementById('metric-fps').textContent = data.fps || 30;
-        document.getElementById('metric-faces').textContent = data.active_faces || 0;
-
-        document.getElementById('overlay-emoji').textContent = emoji;
-        document.getElementById('overlay-label').textContent = dom;
-        document.getElementById('overlay-conf').textContent = `${conf}% match`;
-
-        // Update Emotion Bars directly from TensorFlow Model
-        if (data.emotions) {
-          for (const [emoKey, rawScore] of Object.entries(data.emotions)) {
-            const pct = Math.round(rawScore * 100);
-            const fillEl = document.getElementById(`fill-${emoKey}`);
-            const valEl = document.getElementById(`val-${emoKey}`);
-
-            if (fillEl) fillEl.style.width = `${pct}%`;
-            if (valEl) valEl.textContent = `${pct}%`;
-          }
-        }
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+          audio: false
+        });
+        videoElement.srcObject = stream;
+        videoElement.onloadedmetadata = () => {
+          canvasElement.width = videoElement.videoWidth;
+          canvasElement.height = videoElement.videoHeight;
+          procCanvas.width = videoElement.videoWidth;
+          procCanvas.height = videoElement.videoHeight;
+          requestAnimationFrame(processLoop);
+        };
       } catch (err) {
-        console.error("Telemetry sync error:", err);
+        console.error("Camera access error:", err);
       }
     }
 
-    // Poll TensorFlow Telemetry at 30 FPS
-    setInterval(syncTensorFlowData, 100);
+    async function processLoop() {
+      const now = performance.now();
+      const fps = Math.round(1000 / (now - lastTime + 1e-5));
+      lastTime = now;
+      document.getElementById('metric-fps').textContent = fps;
+
+      if (!isProcessing && videoElement.videoWidth > 0) {
+        isProcessing = true;
+        
+        procCtx.drawImage(videoElement, 0, 0, procCanvas.width, procCanvas.height);
+        const dataUrl = procCanvas.toDataURL('image/jpeg', 0.7);
+
+        try {
+          const res = await fetch('/api/process_frame', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: dataUrl })
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            renderResults(data);
+          }
+        } catch (err) {
+          console.error("Processing API error:", err);
+        } finally {
+          isProcessing = false;
+        }
+      }
+
+      requestAnimationFrame(processLoop);
+    }
+
+    function renderResults(data) {
+      ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+      const dom = data.dominant || 'Neutral';
+      const conf = data.confidence || 0;
+      const emoji = emojiMap[dom] || '😐';
+
+      document.getElementById('metric-dominant').textContent = dom;
+      document.getElementById('metric-confidence').textContent = `${conf}%`;
+      document.getElementById('metric-faces').textContent = data.active_faces || 0;
+
+      document.getElementById('overlay-emoji').textContent = emoji;
+      document.getElementById('overlay-label').textContent = dom;
+      document.getElementById('overlay-conf').textContent = `${conf}% match`;
+
+      // Update Emotion Spectrum Progress Bars
+      if (data.emotions) {
+        for (const [emoKey, rawScore] of Object.entries(data.emotions)) {
+          const pct = Math.round(rawScore * 100);
+          const fillEl = document.getElementById(`fill-${emoKey}`);
+          const valEl = document.getElementById(`val-${emoKey}`);
+
+          if (fillEl) fillEl.style.width = `${pct}%`;
+          if (valEl) valEl.textContent = `${pct}%`;
+        }
+      }
+
+      // Draw TensorFlow Face Bounding Boxes Aligned with Selfie Camera
+      if (data.faces && data.faces.length > 0) {
+        const vidW = canvasElement.width;
+        
+        for (const face of data.faces) {
+          let [x, y, w, h] = face.box;
+          
+          // Mirror X coordinate so target box aligns over mirrored video
+          const mirroredX = vidW - x - w;
+          const color = colorMap[face.emotion] || '#6366f1';
+
+          // Draw Bounding Box
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = color;
+          ctx.strokeRect(mirroredX, y, w, h);
+
+          // Draw Crisp Emotion Tag Badge (Left-to-Right Text)
+          const badgeText = `${face.emotion} (${face.confidence}%)`;
+          ctx.font = 'bold 16px Outfit, Inter, sans-serif';
+          const textWidth = ctx.measureText(badgeText).width;
+          const badgeH = 32;
+          const badgeW = textWidth + 24;
+          const badgeY = Math.max(10, y - badgeH - 4);
+
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.roundRect(mirroredX, badgeY, badgeW, badgeH, 6);
+          ctx.fill();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(badgeText, mirroredX + 12, badgeY + 22);
+        }
+      }
+    }
+
+    initWebcam();
   </script>
 
 </body>
