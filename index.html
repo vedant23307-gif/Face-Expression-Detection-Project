@@ -16,6 +16,11 @@
 
   <!-- Main CSS -->
   <link rel="stylesheet" href="css/style.css">
+
+  <!-- MediaPipe Face Mesh CDN Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
 </head>
 <body>
 
@@ -33,7 +38,7 @@
     <div class="nav-actions">
       <div class="status-badge">
         <span class="pulse-dot"></span>
-        <span>TensorFlow Cloud AI Active</span>
+        <span>60 FPS AI Active</span>
       </div>
     </div>
   </header>
@@ -77,7 +82,7 @@
         </div>
         <div class="metric-card">
           <span class="metric-label">Frame Rate</span>
-          <span class="metric-value"><span id="metric-fps" style="color: var(--accent-green);">30</span> <span style="font-size: 0.8rem; color: var(--text-muted);">FPS</span></span>
+          <span class="metric-value"><span id="metric-fps" style="color: var(--accent-green);">60</span> <span style="font-size: 0.8rem; color: var(--text-muted);">FPS</span></span>
         </div>
         <div class="metric-card">
           <span class="metric-label">Active Faces</span>
@@ -185,146 +190,74 @@
     <p>Vedant &bull; Facial Expression Detection Project &bull; Powered by TensorFlow / Keras & FastAPI</p>
   </footer>
 
-  <!-- Hidden Processing Canvas -->
-  <canvas id="proc-canvas" style="display: none;"></canvas>
-
-  <!-- Cloud Web Camera Stream Engine -->
+  <!-- Application Modules -->
+  <script src="js/mediapipe_handler.js"></script>
+  <script src="js/emotion_classifier.js"></script>
+  <script src="js/charts.js"></script>
+  
   <script>
-    const emojiMap = {
-      'Happy': '😄', 'Surprise': '😲', 'Neutral': '😐', 
-      'Sad': '😢', 'Angry': '😠', 'Fear': '😨', 'Disgust': '🤢'
-    };
+    document.addEventListener('DOMContentLoaded', async () => {
+      const videoElement = document.getElementById('webcam');
+      const canvasElement = document.getElementById('canvas-overlay');
+      
+      const mediaPipeHandler = new MediaPipeHandler();
+      const classifier = new EmotionClassifier();
+      const charts = new ChartsController();
 
-    const colorMap = {
-      'Happy': '#10b981', 'Surprise': '#f97316', 'Neutral': '#8b5cf6',
-      'Sad': '#64748b', 'Angry': '#ef4444', 'Fear': '#f59e0b', 'Disgust': '#14b8a6'
-    };
+      let lastTime = performance.now();
 
-    const videoElement = document.getElementById('webcam');
-    const canvasElement = document.getElementById('canvas-overlay');
-    const ctx = canvasElement.getContext('2d');
-    const procCanvas = document.getElementById('proc-canvas');
-    const procCtx = procCanvas.getContext('2d');
-
-    let isProcessing = false;
-    let lastTime = performance.now();
-
-    async function initWebcam() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
-          audio: false
-        });
-        videoElement.srcObject = stream;
-        videoElement.onloadedmetadata = () => {
+      function updateCanvasDimensions() {
+        if (videoElement.videoWidth > 0) {
           canvasElement.width = videoElement.videoWidth;
           canvasElement.height = videoElement.videoHeight;
-          procCanvas.width = videoElement.videoWidth;
-          procCanvas.height = videoElement.videoHeight;
-          requestAnimationFrame(processLoop);
-        };
-      } catch (err) {
-        console.error("Camera access error:", err);
-        alert("Camera access is required. Please allow camera permissions in your browser.");
-      }
-    }
-
-    async function processLoop() {
-      const now = performance.now();
-      const fps = Math.round(1000 / (now - lastTime + 1e-5));
-      lastTime = now;
-      document.getElementById('metric-fps').textContent = fps;
-
-      if (!isProcessing && videoElement.videoWidth > 0) {
-        isProcessing = true;
-        
-        procCtx.drawImage(videoElement, 0, 0, procCanvas.width, procCanvas.height);
-        const dataUrl = procCanvas.toDataURL('image/jpeg', 0.7);
-
-        try {
-          const res = await fetch('/api/process_frame', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ image: dataUrl })
-          });
-
-          if (res.ok) {
-            const data = await res.json();
-            renderResults(data);
-          }
-        } catch (err) {
-          console.error("Processing API error:", err);
-        } finally {
-          isProcessing = false;
         }
       }
 
-      requestAnimationFrame(processLoop);
-    }
+      videoElement.addEventListener('loadedmetadata', updateCanvasDimensions);
 
-    function renderResults(data) {
-      ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+      await mediaPipeHandler.init(videoElement, canvasElement, async (data) => {
+        const now = performance.now();
+        const fps = Math.round(1000 / (now - lastTime + 1e-5));
+        lastTime = now;
 
-      const dom = data.dominant || 'Neutral';
-      const conf = data.confidence || 0;
-      const emoji = emojiMap[dom] || '😐';
+        if (data.hasFace && data.features) {
+          document.getElementById('metric-faces').textContent = data.faceCount || 1;
 
-      document.getElementById('metric-dominant').textContent = dom;
-      document.getElementById('metric-confidence').textContent = `${conf}%`;
-      document.getElementById('metric-faces').textContent = data.active_faces || 0;
+          // Perform inference via client engine / API sync
+          const prediction = classifier.predict(data.features);
 
-      document.getElementById('overlay-emoji').textContent = emoji;
-      document.getElementById('overlay-label').textContent = dom;
-      document.getElementById('overlay-conf').textContent = `${conf}% match`;
+          mediaPipeHandler.setEmotionState(prediction.dominant, prediction.emoji, prediction.confidence);
+          charts.updateEmotionBars(prediction.scores);
+          charts.updateMetrics(prediction.dominant, prediction.confidence, fps, data.features.raw);
+          charts.updateOverlay(prediction.dominant, prediction.confidence, prediction.emoji);
 
-      // Update Emotion Spectrum Progress Bars
-      if (data.emotions) {
-        for (const [emoKey, rawScore] of Object.entries(data.emotions)) {
-          const pct = Math.round(rawScore * 100);
-          const fillEl = document.getElementById(`fill-${emoKey}`);
-          const valEl = document.getElementById(`val-${emoKey}`);
+          // Async sync with FastAPI Cloud model API
+          try {
+            fetch('/api/predict_emotion', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ear: data.features.raw.avgEAR,
+                mar: data.features.raw.MAR,
+                smile: data.features.raw.smileIndex,
+                brow: data.features.raw.browElevation,
+                inner_brow: data.features.raw.innerBrowDist
+              })
+            }).then(r => r.json()).then(cloudData => {
+              if (cloudData.has_face && cloudData.emotions) {
+                charts.updateEmotionBars(cloudData.emotions);
+              }
+            }).catch(() => {});
+          } catch(e) {}
 
-          if (fillEl) fillEl.style.width = `${pct}%`;
-          if (valEl) valEl.textContent = `${pct}%`;
+        } else {
+          document.getElementById('metric-faces').textContent = '0';
+          charts.updateOverlay('Searching...', 0, '🔍');
         }
-      }
+      });
 
-      // Draw TensorFlow Face Bounding Boxes Aligned with Selfie Camera
-      if (data.faces && data.faces.length > 0) {
-        const vidW = canvasElement.width;
-        
-        for (const face of data.faces) {
-          let [x, y, w, h] = face.box;
-          
-          // Mirror X coordinate so target box aligns over mirrored video
-          const mirroredX = vidW - x - w;
-          const color = colorMap[face.emotion] || '#6366f1';
-
-          // Draw Bounding Box
-          ctx.lineWidth = 3;
-          ctx.strokeStyle = color;
-          ctx.strokeRect(mirroredX, y, w, h);
-
-          // Draw Crisp Emotion Tag Badge (Left-to-Right Text)
-          const badgeText = `${face.emotion} (${face.confidence}%)`;
-          ctx.font = 'bold 16px Outfit, Inter, sans-serif';
-          const textWidth = ctx.measureText(badgeText).width;
-          const badgeH = 32;
-          const badgeW = textWidth + 24;
-          const badgeY = Math.max(10, y - badgeH - 4);
-
-          ctx.fillStyle = color;
-          ctx.beginPath();
-          ctx.roundRect(mirroredX, badgeY, badgeW, badgeH, 6);
-          ctx.fill();
-
-          ctx.fillStyle = '#ffffff';
-          ctx.fillText(badgeText, mirroredX + 12, badgeY + 22);
-        }
-      }
-    }
-
-    initWebcam();
+      mediaPipeHandler.start();
+    });
   </script>
 
 </body>

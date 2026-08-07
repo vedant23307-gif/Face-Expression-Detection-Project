@@ -1,6 +1,6 @@
 /**
- * MediaPipe Face Mesh Handler & Canvas Visualizer
- * Aligns bounding box coordinates with mirrored selfie video (scaleX(-1)).
+ * Ultra-Fast 60 FPS MediaPipe Face Bounding Box & Landmark Engine
+ * Aligns face bounding box perfectly over live web camera.
  */
 
 class MediaPipeHandler {
@@ -9,8 +9,6 @@ class MediaPipeHandler {
     this.camera = null;
     this.landmarks = null;
     this.showBoundingBox = true;
-    this.showMesh = false;
-    this.showPoints = false;
     this.onResultsCallback = null;
     this.currentEmotion = 'Neutral';
     this.currentEmoji = '😐';
@@ -30,8 +28,8 @@ class MediaPipeHandler {
     this.faceMesh.setOptions({
       maxNumFaces: 4,
       refineLandmarks: true,
-      minDetectionConfidence: 0.6,
-      minTrackingConfidence: 0.6
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
     });
 
     this.faceMesh.onResults((results) => this.handleResults(results));
@@ -72,12 +70,6 @@ class MediaPipeHandler {
         }
       }
 
-      if (this.showMesh) {
-        for (const faceLandmarks of results.multiFaceLandmarks) {
-          this.drawMeshWireframe(faceLandmarks);
-        }
-      }
-
       const features = this.extractFeatureVector(this.landmarks);
 
       if (this.onResultsCallback) {
@@ -104,7 +96,7 @@ class MediaPipeHandler {
   }
 
   /**
-   * Draw Face Bounding Box aligned with Mirrored Selfie Video (scaleX(-1))
+   * Draw Clean Bounding Box perfectly centered over face
    */
   drawFaceBoundingBox(landmarks) {
     const width = this.canvasElement.width;
@@ -113,7 +105,7 @@ class MediaPipeHandler {
     let minX = width, maxX = 0, minY = height, maxY = 0;
 
     for (const pt of landmarks) {
-      // Mirror X coordinate so target box perfectly aligns with mirrored video stream
+      // Mirror X coordinate so target box aligns over mirrored video
       const x = (1 - pt.x) * width;
       const y = pt.y * height;
       if (x < minX) minX = x;
@@ -122,13 +114,13 @@ class MediaPipeHandler {
       if (y > maxY) maxY = y;
     }
 
-    const padX = (maxX - minX) * 0.15;
-    const padY = (maxY - minY) * 0.20;
+    const padX = (maxX - minX) * 0.12;
+    const padY = (maxY - minY) * 0.16;
 
     const boxX = Math.max(0, minX - padX);
-    const boxY = Math.max(0, minY - padY * 1.5);
+    const boxY = Math.max(0, minY - padY * 1.4);
     const boxW = Math.min(width - boxX, (maxX - minX) + padX * 2);
-    const boxH = Math.min(height - boxY, (maxY - minY) + padY * 2.2);
+    const boxH = Math.min(height - boxY, (maxY - minY) + padY * 2.0);
 
     const colorMap = {
       'Happy': '#10b981',
@@ -147,7 +139,7 @@ class MediaPipeHandler {
     this.ctx.strokeStyle = color;
     this.ctx.strokeRect(boxX, boxY, boxW, boxH);
 
-    // --- DRAW CLEAN EMOTION TAG BADGE (e.g. `Neutral (97%)`) ---
+    // Draw Clean Emotion Tag Badge
     const badgeText = `${this.currentEmotion} (${this.currentConfidence}%)`;
     this.ctx.font = 'bold 16px Outfit, Inter, sans-serif';
     const textWidth = this.ctx.measureText(badgeText).width;
@@ -155,7 +147,7 @@ class MediaPipeHandler {
     const badgeW = textWidth + 24;
     const badgeY = Math.max(10, boxY - badgeH - 4);
 
-    // Badge Solid Pill Background
+    // Badge Solid Background
     this.ctx.fillStyle = color;
     this.ctx.beginPath();
     this.ctx.roundRect(boxX, badgeY, badgeW, badgeH, 6);
@@ -164,12 +156,6 @@ class MediaPipeHandler {
     // Badge Text (White)
     this.ctx.fillStyle = '#ffffff';
     this.ctx.fillText(badgeText, boxX + 12, badgeY + 22);
-  }
-
-  drawMeshWireframe(landmarks) {
-    if (typeof drawConnectors === 'function' && FACEMESH_TESSELATION) {
-      drawConnectors(this.ctx, landmarks, FACEMESH_TESSELATION, { color: 'rgba(99, 102, 241, 0.25)', lineWidth: 1 });
-    }
   }
 
   extractFeatureVector(landmarks) {
