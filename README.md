@@ -1,6 +1,6 @@
-# 🧠 vedant23307-gif | Face Expression Detection Project
+# 🧠 Vedant | Face Expression Detection Project
 
-A high-accuracy, real-time **Facial Emotion Recognition AI System** created by **vedant23307-gif**, powered by a **TensorFlow / Keras Deep Convolutional Neural Network (CNN)** backend, **FastAPI stream server**, and an **HTML5 / CSS3 / JavaScript Glassmorphism Web Interface**.
+A high-accuracy, real-time **Facial Emotion Recognition AI System** created by **Vedant** (`vedant23307-gif`), powered by a **TensorFlow / Keras Deep Convolutional Neural Network (CNN)** backend, **FastAPI stream server**, and an **HTML5 / CSS3 / JavaScript Glassmorphism Web Interface**.
 
 ---
 
@@ -18,7 +18,7 @@ A high-accuracy, real-time **Facial Emotion Recognition AI System** created by *
 
 ```text
 Face Expression Detection Project/
-├── index.html                   # HTML5 Web Dashboard (vedant23307-gif Header)
+├── index.html                   # HTML5 Web Dashboard (Vedant Header)
 ├── css/
 │   └── style.css                # Dark-mode Glassmorphism UI Stylesheet
 ├── js/
