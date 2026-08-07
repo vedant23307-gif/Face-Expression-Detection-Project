@@ -1,0 +1,14 @@
+[providers]
+providers = ["python"]
+
+[variables]
+PYTHONUNBUFFERED = "1"
+
+[phases.setup]
+nixPkgs = ["python311"]
+
+[phases.install]
+cmds = ["pip install -r requirements.txt"]
+
+[start]
+cmd = "uvicorn python.fastapi_server:app --host 0.0.0.0 --port $PORT"
