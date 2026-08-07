@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-High-Performance FastAPI Facial Emotion Web Server (Cloud & Local Compatible)
-Supports Client-Side Web Camera Frame Processing (/api/process_frame) for Render/Cloud servers,
-and local webcam video streaming (/video_feed).
+High-Performance FastAPI Facial Emotion Web Server (Cloud Compatible)
+Accepts client-side webcam Base64 frames via /api/process_frame,
+runs TensorFlow FER model, and returns high-accuracy predictions.
 """
 
 import os
@@ -12,8 +12,8 @@ import time
 import json
 import base64
 import numpy as np
-from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
+from fastapi import FastAPI
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -41,14 +41,14 @@ app.mount("/js", StaticFiles(directory=os.path.join(BASE_DIR, "js")), name="js")
 # Initialize TensorFlow FER Model Detector
 fer_detector = FER(mtcnn=False)
 
-# Strict Haar Face Cascade for noise suppression
+# Strict Haar Face Cascade for noise & wall blinds suppression
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
 class FramePayload(BaseModel):
     image: str  # Base64 data URL
 
 class FastFaceTracker:
-    def __init__(self, alpha=0.50, min_face_size=100):
+    def __init__(self, alpha=0.50, min_face_size=80):
         self.alpha = alpha
         self.min_face_size = min_face_size
         self.tracked_faces = {}
@@ -106,8 +106,8 @@ class FastFaceTracker:
         
         faces = face_cascade.detectMultiScale(
             gray,
-            scaleFactor=1.15,
-            minNeighbors=7,
+            scaleFactor=1.12,
+            minNeighbors=5,
             minSize=(self.min_face_size, self.min_face_size)
         )
 
@@ -115,7 +115,7 @@ class FastFaceTracker:
 
         for (x, y, w, h) in faces:
             aspect_ratio = float(w) / float(h)
-            if aspect_ratio < 0.60 or aspect_ratio > 1.6:
+            if aspect_ratio < 0.50 or aspect_ratio > 1.8:
                 continue
 
             face_img = frame[y:y+h, x:x+w]
@@ -127,7 +127,12 @@ class FastFaceTracker:
             if emotions and len(emotions) > 0:
                 emo_scores = emotions[0]["emotions"]
             else:
-                emo_scores = {'happy': 0.0, 'surprise': 0.0, 'neutral': 1.0, 'sad': 0.0, 'angry': 0.0, 'fear': 0.0, 'disgust': 0.0}
+                # Full frame fallback if face crop fails
+                full_emotions = fer_detector.detect_emotions(frame)
+                if full_emotions and len(full_emotions) > 0:
+                    emo_scores = full_emotions[0]["emotions"]
+                else:
+                    emo_scores = {'happy': 0.0, 'surprise': 0.0, 'neutral': 1.0, 'sad': 0.0, 'angry': 0.0, 'fear': 0.0, 'disgust': 0.0}
 
             dom_emotion = max(emo_scores, key=emo_scores.get).capitalize()
             score = emo_scores[max(emo_scores, key=emo_scores.get)] * 100.0
@@ -190,7 +195,7 @@ class FastFaceTracker:
 
         return active_output
 
-tracker = FastFaceTracker(alpha=0.50, min_face_size=100)
+tracker = FastFaceTracker(alpha=0.50, min_face_size=80)
 
 @app.get("/", response_class=FileResponse)
 async def read_index():
@@ -199,7 +204,8 @@ async def read_index():
 @app.post("/api/process_frame")
 async def process_frame(payload: FramePayload):
     """
-    Cloud API Endpoint: Accepts client-side camera Base64 frame, runs TensorFlow AI model,
+    Cloud Web Camera API Endpoint:
+    Accepts Base64 image snapshot from user's laptop browser, runs TensorFlow AI model,
     and returns bounding box coordinates + emotion probabilities.
     """
     try:
