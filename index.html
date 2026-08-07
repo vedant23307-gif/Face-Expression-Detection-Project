@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Facial Expression AI - Real-Time TensorFlow Web Dashboard</title>
+  <meta name="description" content="High-accuracy real-time facial emotion recognition dashboard powered by TensorFlow Deep Learning model.">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- Main CSS -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Navigation Bar -->
+  <header class="navbar">
+    <div class="brand">
+      <div class="brand-icon">
+        <i class="fas fa-brain"></i>
+      </div>
+      <div>
+        <h1 class="brand-title">Facial Expression AI</h1>
+      </div>
+      <span class="badge-tech">TensorFlow FER Model</span>
+    </div>
+    <div class="nav-actions">
+      <div class="status-badge">
+        <span class="pulse-dot"></span>
+        <span>TensorFlow Stream Active</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main App Layout Container -->
+  <main class="app-container">
+    
+    <!-- Left Column: TensorFlow Video Viewport & Controls -->
+    <section class="stage-card">
+      <div class="stage-header">
+        <h2 class="stage-title">
+          <i class="fas fa-video"></i> Live TensorFlow Model Stream
+        </h2>
+        <span class="badge-tech" style="background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.3); color: #10b981;">Target Box Active</span>
+      </div>
+
+      <!-- Viewport Wrapper (Renders 100% High-Accuracy TensorFlow Stream) -->
+      <div class="viewport-wrapper">
+        <img id="tf-video-stream" src="/video_feed" style="width: 100%; height: 100%; object-fit: cover;" alt="TensorFlow AI Stream">
+
+        <!-- Live Floating Emotion Overlay -->
+        <div class="live-emotion-overlay">
+          <span class="overlay-emoji" id="overlay-emoji">😐</span>
+          <div>
+            <div class="overlay-label" id="overlay-label">Analyzing...</div>
+            <div class="overlay-conf" id="overlay-conf">100% match</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Metrics Quick Row -->
+      <div class="metrics-row">
+        <div class="metric-card">
+          <span class="metric-label">Dominant Emotion</span>
+          <span class="metric-value" id="metric-dominant" style="color: var(--primary-glow);">Neutral</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Confidence</span>
+          <span class="metric-value" id="metric-confidence" style="color: var(--accent-cyan);">100%</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Frame Rate</span>
+          <span class="metric-value"><span id="metric-fps" style="color: var(--accent-green);">30</span> <span style="font-size: 0.8rem; color: var(--text-muted);">FPS</span></span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Active Faces</span>
+          <span class="metric-value" id="metric-faces" style="color: var(--accent-amber);">1</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: Sidebar Analytics Panel -->
+    <aside class="analytics-panel">
+      
+      <!-- Emotion Spectrum Progress Card (Synced directly with TensorFlow AI model API) -->
+      <div class="panel-card">
+        <h3 class="panel-title">
+          <span><i class="fas fa-chart-bar" style="color: var(--primary);"></i> Emotion Spectrum</span>
+          <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal;">TensorFlow Model</span>
+        </h3>
+
+        <div class="emotion-bars">
+          <!-- Happy -->
+          <div class="emotion-bar-item">
+            <div class="bar-label-group">
+              <span class="bar-name">😄 Happy</span>
+              <span class="bar-val" id="val-happy">0%</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill fill-happy" id="fill-happy"></div>
+            </div>
+          </div>
+
+          <!-- Surprise -->
+          <div class="emotion-bar-item">
+            <div class="bar-label-group">
+              <span class="bar-name">😲 Surprise</span>
+              <span class="bar-val" id="val-surprise">0%</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill fill-surprised" id="fill-surprise"></div>
+            </div>
+          </div>
+
+          <!-- Neutral -->
+          <div class="emotion-bar-item">
+            <div class="bar-label-group">
+              <span class="bar-name">😐 Neutral</span>
+              <span class="bar-val" id="val-neutral">100%</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill fill-neutral" id="fill-neutral" style="width: 100%;"></div>
+            </div>
+          </div>
+
+          <!-- Sad -->
+          <div class="emotion-bar-item">
+            <div class="bar-label-group">
+              <span class="bar-name">😢 Sad</span>
+              <span class="bar-val" id="val-sad">0%</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill fill-sad" id="fill-sad"></div>
+            </div>
+          </div>
+
+          <!-- Angry -->
+          <div class="emotion-bar-item">
+            <div class="bar-label-group">
+              <span class="bar-name">😠 Angry</span>
+              <span class="bar-val" id="val-angry">0%</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill fill-angry" id="fill-angry"></div>
+            </div>
+          </div>
+
+          <!-- Fear -->
+          <div class="emotion-bar-item">
+            <div class="bar-label-group">
+              <span class="bar-name">😨 Fear</span>
+              <span class="bar-val" id="val-fear">0%</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill fill-fearful" id="fill-fear"></div>
+            </div>
+          </div>
+
+          <!-- Disgust -->
+          <div class="emotion-bar-item">
+            <div class="bar-label-group">
+              <span class="bar-name">🤢 Disgust</span>
+              <span class="bar-val" id="val-disgust">0%</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill fill-disgusted" id="fill-disgust"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </aside>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>Facial Expression AI System &bull; Powered by TensorFlow / Keras FER Model & FastAPI</p>
+  </footer>
+
+  <!-- Telemetry Polling Script (Direct sync with TensorFlow model) -->
+  <script>
+    const emojiMap = {
+      'Happy': '😄', 'Surprise': '😲', 'Neutral': '😐', 
+      'Sad': '😢', 'Angry': '😠', 'Fear': '😨', 'Disgust': '🤢'
+    };
+
+    async function syncTensorFlowData() {
+      try {
+        const res = await fetch('/api/emotion_data');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // Update Dominant Emotion Metrics
+        const dom = data.dominant || 'Neutral';
+        const conf = data.confidence || 0;
+        const emoji = emojiMap[dom] || '😐';
+
+        document.getElementById('metric-dominant').textContent = dom;
+        document.getElementById('metric-confidence').textContent = `${conf}%`;
+        document.getElementById('metric-fps').textContent = data.fps || 30;
+        document.getElementById('metric-faces').textContent = data.active_faces || 0;
+
+        document.getElementById('overlay-emoji').textContent = emoji;
+        document.getElementById('overlay-label').textContent = dom;
+        document.getElementById('overlay-conf').textContent = `${conf}% match`;
+
+        // Update Emotion Bars directly from TensorFlow Model
+        if (data.emotions) {
+          for (const [emoKey, rawScore] of Object.entries(data.emotions)) {
+            const pct = Math.round(rawScore * 100);
+            const fillEl = document.getElementById(`fill-${emoKey}`);
+            const valEl = document.getElementById(`val-${emoKey}`);
+
+            if (fillEl) fillEl.style.width = `${pct}%`;
+            if (valEl) valEl.textContent = `${pct}%`;
+          }
+        }
+      } catch (err) {
+        console.error("Telemetry sync error:", err);
+      }
+    }
+
+    // Poll TensorFlow Telemetry at 30 FPS
+    setInterval(syncTensorFlowData, 100);
+  </script>
+
+</body>
+</html>
