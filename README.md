@@ -1,6 +1,6 @@
-# 🧠 Face Expression Detection Project
+# 🧠 Rushabh | Face Expression Detection Project
 
-A high-accuracy, real-time **Facial Emotion Recognition AI System** powered by a **TensorFlow / Keras Deep Convolutional Neural Network (CNN)** backend, **FastAPI stream server**, and an **HTML5 / CSS3 / JavaScript Glassmorphism Web Interface**.
+A high-accuracy, real-time **Facial Emotion Recognition AI System** created by **Rushabh**, powered by a **TensorFlow / Keras Deep Convolutional Neural Network (CNN)** backend, **FastAPI stream server**, and an **HTML5 / CSS3 / JavaScript Glassmorphism Web Interface**.
 
 ---
 
@@ -18,7 +18,7 @@ A high-accuracy, real-time **Facial Emotion Recognition AI System** powered by a
 
 ```text
 Face Expression Detection Project/
-├── index.html                   # HTML5 Web Application Dashboard
+├── index.html                   # HTML5 Web Dashboard (Rushabh Header)
 ├── css/
 │   └── style.css                # Dark-mode Glassmorphism UI Stylesheet
 ├── js/
@@ -30,7 +30,6 @@ Face Expression Detection Project/
 │   ├── fastapi_server.py        # High-Performance FastAPI TensorFlow Web Server
 │   ├── Face_emotion_tf.py       # Live Desktop Webcam TensorFlow AI Script
 │   └── requirements.txt         # Python Package Dependencies
-├── DEPLOYMENT.md                # Step-by-Step Cloud Deployment Guide
 └── README.md                    # Project Documentation
 ```
 
@@ -59,9 +58,3 @@ To run directly on desktop without a web browser:
 ```bash
 python3 python/Face_emotion_tf.py
 ```
-
----
-
-## 🌐 Cloud Deployment
-
-See **[DEPLOYMENT.md](DEPLOYMENT.md)** for instructions on deploying live to **Render.com**, **Railway**, or **Hugging Face Spaces**!
