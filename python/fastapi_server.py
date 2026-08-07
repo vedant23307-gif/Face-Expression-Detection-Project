@@ -11,7 +11,6 @@ import cv2
 import time
 import json
 import numpy as np
-from flask import Flask
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
