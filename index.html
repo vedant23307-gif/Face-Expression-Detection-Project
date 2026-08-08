@@ -50,14 +50,14 @@
         <span class="badge-tech" style="background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.3); color: #10b981;">Target Box Active</span>
       </div>
 
-      <!-- 100% Full Viewport Container - ZERO Black Space -->
+      <!-- 100% Full Viewport Container -->
       <div class="viewport-wrapper">
         <video id="webcam" autoplay playsinline muted></video>
         <canvas id="canvas-overlay"></canvas>
 
         <!-- Live Floating Emotion Overlay -->
         <div class="live-emotion-overlay">
-          <span class="overlay-emoji" id="overlay-emoji">😊</span>
+          <span class="overlay-emoji" id="overlay-emoji">😐</span>
           <div>
             <div class="overlay-label" id="overlay-label">Analyzing...</div>
             <div class="overlay-conf" id="overlay-conf">100% match</div>
@@ -69,15 +69,15 @@
       <div class="metrics-row">
         <div class="metric-card">
           <span class="metric-label">Dominant Emotion</span>
-          <span class="metric-value" id="metric-dominant" style="color: #10b981;">Happy</span>
+          <span class="metric-value" id="metric-dominant" style="color: #8b5cf6;">Neutral</span>
         </div>
         <div class="metric-card">
           <span class="metric-label">Confidence</span>
-          <span class="metric-value" id="metric-confidence" style="color: var(--accent-cyan);">96%</span>
+          <span class="metric-value" id="metric-confidence" style="color: var(--accent-cyan);">95%</span>
         </div>
         <div class="metric-card">
           <span class="metric-label">Frame Rate</span>
-          <span class="metric-value"><span id="metric-fps" style="color: var(--accent-green);">60</span> <span style="font-size: 0.8rem; color: var(--text-muted);">FPS</span></span>
+          <span class="metric-value"><span id="metric-fps" style="color: var(--accent-green);">30</span> <span style="font-size: 0.8rem; color: var(--text-muted);">FPS</span></span>
         </div>
         <div class="metric-card">
           <span class="metric-label">Active Faces</span>
@@ -101,10 +101,10 @@
           <div class="emotion-bar-item">
             <div class="bar-label-group">
               <span class="bar-name">😄 Happy</span>
-              <span class="bar-val" id="val-happy">96%</span>
+              <span class="bar-val" id="val-happy">0%</span>
             </div>
             <div class="bar-track">
-              <div class="bar-fill fill-happy" id="fill-happy" style="width: 96%;"></div>
+              <div class="bar-fill fill-happy" id="fill-happy"></div>
             </div>
           </div>
 
@@ -123,10 +123,10 @@
           <div class="emotion-bar-item">
             <div class="bar-label-group">
               <span class="bar-name">😐 Neutral</span>
-              <span class="bar-val" id="val-neutral">3%</span>
+              <span class="bar-val" id="val-neutral">95%</span>
             </div>
             <div class="bar-track">
-              <div class="bar-fill fill-neutral" id="fill-neutral" style="width: 3%;"></div>
+              <div class="bar-fill fill-neutral" id="fill-neutral" style="width: 95%;"></div>
             </div>
           </div>
 
@@ -134,10 +134,10 @@
           <div class="emotion-bar-item">
             <div class="bar-label-group">
               <span class="bar-name">😢 Sad</span>
-              <span class="bar-val" id="val-sad">1%</span>
+              <span class="bar-val" id="val-sad">0%</span>
             </div>
             <div class="bar-track">
-              <div class="bar-fill fill-sad" id="fill-sad" style="width: 1%;"></div>
+              <div class="bar-fill fill-sad" id="fill-sad"></div>
             </div>
           </div>
 
@@ -188,7 +188,7 @@
   <!-- Hidden Snapshot Canvas -->
   <canvas id="proc-canvas" style="display: none;"></canvas>
 
-  <!-- 100% Precise Camera & Bounding Box Engine -->
+  <!-- Dynamic TensorFlow Camera & Emotion Engine -->
   <script>
     const emojiMap = {
       'Happy': '😄', 'Surprise': '😲', 'Neutral': '😐', 
@@ -208,8 +208,10 @@
 
     let lastTime = performance.now();
     let isProcessing = false;
-    let currentEmotion = 'Happy';
-    let currentConf = 96;
+
+    let currentEmotion = 'Neutral';
+    let currentConf = 95;
+    let targetBox = null;
 
     async function startCamera() {
       try {
@@ -229,7 +231,6 @@
     }
 
     function syncCanvasSize() {
-      // Synchronize internal canvas pixel buffer to exact displayed element size
       const cW = videoElement.clientWidth || 800;
       const cH = videoElement.clientHeight || 520;
       canvasElement.width = cW;
@@ -251,17 +252,11 @@
         const cW = canvasElement.width;
         const cH = canvasElement.height;
 
-        // Calculate Target Box 100% aligned directly over user face at eye level
-        const boxW = Math.round(cW * 0.32);
-        const boxH = Math.round(cH * 0.50);
-        const boxX = Math.round((cW - boxW) / 2);
-        const boxY = Math.round((cH - boxH) / 2 - 25);
-
-        // API Frame Snapshot Every 120ms
+        // API Snapshot Analysis Every 150ms
         if (!isProcessing) {
           isProcessing = true;
           procCtx.drawImage(videoElement, 0, 0, procCanvas.width, procCanvas.height);
-          const dataUrl = procCanvas.toDataURL('image/jpeg', 0.6);
+          const dataUrl = procCanvas.toDataURL('image/jpeg', 0.65);
 
           fetch('/api/process_frame', {
             method: 'POST',
@@ -269,17 +264,39 @@
             body: JSON.stringify({ image: dataUrl })
           }).then(r => r.json()).then(data => {
             if (data.dominant) {
-              updateUI(data.dominant, data.confidence || 96, data.emotions);
+              updateUI(data.dominant, data.confidence || 95, data.emotions);
+              
+              if (data.box && data.box.length === 4) {
+                const [rx, ry, rw, rh] = data.box;
+                const scaleX = cW / procCanvas.width;
+                const scaleY = cH / procCanvas.height;
+
+                // Mirror X for selfie webcam overlay
+                const bx = Math.round(cW - (rx + rw) * scaleX);
+                const by = Math.round(ry * scaleY);
+                const bw = Math.round(rw * scaleX);
+                const bh = Math.round(rh * scaleY);
+                targetBox = [bx, by, bw, bh];
+              }
             }
           }).catch(e => {
-            updateUI('Happy', 96, { happy: 0.96, neutral: 0.03, sad: 0.01 });
+            console.error("Inference sync error:", e);
           }).finally(() => {
-            setTimeout(() => { isProcessing = false; }, 120);
+            setTimeout(() => { isProcessing = false; }, 150);
           });
         }
 
-        // Draw Crisp Target Box + Happy (96%) Badge Right Over Face
-        drawTargetBoxOverFace(boxX, boxY, boxW, boxH, currentEmotion, currentConf);
+        // Fallback Box Centering if no specific face crop returned
+        if (!targetBox) {
+          const bw = Math.round(cW * 0.35);
+          const bh = Math.round(cH * 0.52);
+          const bx = Math.round((cW - bw) / 2);
+          const by = Math.round((cH - bh) / 2 - 20);
+          targetBox = [bx, by, bw, bh];
+        }
+
+        // Render Dynamic Bounding Box & Emotion Tag Badge
+        drawTargetBoxOverFace(targetBox[0], targetBox[1], targetBox[2], targetBox[3], currentEmotion, currentConf);
       }
 
       requestAnimationFrame(renderLoop);
@@ -289,8 +306,8 @@
       currentEmotion = dom;
       currentConf = conf;
 
-      const emoji = emojiMap[dom] || '😄';
-      const color = colorMap[dom] || '#10b981';
+      const emoji = emojiMap[dom] || '😐';
+      const color = colorMap[dom] || '#8b5cf6';
 
       document.getElementById('metric-dominant').textContent = dom;
       document.getElementById('metric-dominant').style.color = color;
@@ -314,7 +331,7 @@
     }
 
     function drawTargetBoxOverFace(boxX, boxY, boxW, boxH, emotion, conf) {
-      const color = colorMap[emotion] || '#10b981';
+      const color = colorMap[emotion] || '#8b5cf6';
 
       // Outer Glow Effect
       ctx.shadowColor = color;
@@ -336,7 +353,7 @@
       ctx.beginPath(); ctx.moveTo(boxX, boxY + boxH - cLen); ctx.lineTo(boxX, boxY + boxH); ctx.lineTo(boxX + cLen, boxY + boxH); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(boxX + boxW - cLen, boxY + boxH); ctx.lineTo(boxX + boxW, boxY + boxH); ctx.lineTo(boxX + boxW, boxY + boxH - cLen); ctx.stroke();
 
-      // Draw Crisp Emotion Tag Badge Above Face (Happy 96%)
+      // Draw Crisp Dynamic Emotion Tag Badge (e.g. Neutral 95%, Happy 94%)
       const badgeText = `${emotion} (${conf}%)`;
       ctx.font = 'bold 17px Outfit, Inter, sans-serif';
       const textWidth = ctx.measureText(badgeText).width;
