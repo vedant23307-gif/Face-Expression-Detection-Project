@@ -122,6 +122,10 @@ class MediaPipeHandler {
     const boxW = Math.min(width - boxX, (maxX - minX) + padX * 2);
     const boxH = Math.min(height - boxY, (maxY - minY) + padY * 2.0);
 
+    this.drawFaceBoundingBoxFromRect(boxX, boxY, boxW, boxH);
+  }
+
+  drawFaceBoundingBoxFromRect(boxX, boxY, boxW, boxH) {
     const colorMap = {
       'Happy': '#10b981',
       'Surprise': '#f97316',
@@ -134,28 +138,42 @@ class MediaPipeHandler {
 
     const color = colorMap[this.currentEmotion] || '#6366f1';
 
+    this.ctx.shadowColor = color;
+    this.ctx.shadowBlur = 10;
+
     // Draw Main Bounding Box
-    this.ctx.lineWidth = 3;
+    this.ctx.lineWidth = 3.5;
     this.ctx.strokeStyle = color;
     this.ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+    this.ctx.shadowBlur = 0;
+
+    // Draw Corner Accents
+    const cLen = 22;
+    this.ctx.lineWidth = 5;
+
+    this.ctx.beginPath(); this.ctx.moveTo(boxX, boxY + cLen); this.ctx.lineTo(boxX, boxY); this.ctx.lineTo(boxX + cLen, boxY); this.ctx.stroke();
+    this.ctx.beginPath(); this.ctx.moveTo(boxX + boxW - cLen, boxY); this.ctx.lineTo(boxX + boxW, boxY); this.ctx.lineTo(boxX + boxW, boxY + cLen); this.ctx.stroke();
+    this.ctx.beginPath(); this.ctx.moveTo(boxX, boxY + boxH - cLen); this.ctx.lineTo(boxX, boxY + boxH); this.ctx.lineTo(boxX + cLen, boxY + boxH); this.ctx.stroke();
+    this.ctx.beginPath(); this.ctx.moveTo(boxX + boxW - cLen, boxY + boxH); this.ctx.lineTo(boxX + boxW, boxY + boxH); this.ctx.lineTo(boxX + boxW, boxY + boxH - cLen); this.ctx.stroke();
 
     // Draw Clean Emotion Tag Badge
     const badgeText = `${this.currentEmotion} (${this.currentConfidence}%)`;
     this.ctx.font = 'bold 16px Outfit, Inter, sans-serif';
     const textWidth = this.ctx.measureText(badgeText).width;
-    const badgeH = 32;
-    const badgeW = textWidth + 24;
-    const badgeY = Math.max(10, boxY - badgeH - 4);
+    const badgeH = 34;
+    const badgeW = textWidth + 28;
+    const badgeY = Math.max(10, boxY - badgeH - 6);
 
     // Badge Solid Background
     this.ctx.fillStyle = color;
     this.ctx.beginPath();
-    this.ctx.roundRect(boxX, badgeY, badgeW, badgeH, 6);
+    this.ctx.roundRect(boxX, badgeY, badgeW, badgeH, 8);
     this.ctx.fill();
 
     // Badge Text (White)
     this.ctx.fillStyle = '#ffffff';
-    this.ctx.fillText(badgeText, boxX + 12, badgeY + 22);
+    this.ctx.fillText(badgeText, boxX + 14, badgeY + 23);
   }
 
   extractFeatureVector(landmarks) {

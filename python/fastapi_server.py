@@ -19,8 +19,11 @@ from typing import List, Optional
 
 try:
     import cv2
+    cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+    face_cascade = cv2.CascadeClassifier(cascade_path)
 except Exception:
     cv2 = None
+    face_cascade = None
 
 try:
     import tensorflow as tf
@@ -57,42 +60,99 @@ async def read_index():
 async def process_frame(payload: FramePayload):
     """
     100% Crash-Proof Camera Processing API
-    Decodes Base64 camera image, runs TensorFlow FER model, and streams dynamic predictions.
+    Decodes Base64 camera image, runs FER model or OpenCV face cascade, and streams dynamic predictions.
     """
     try:
         if not payload.image or "," not in payload.image:
-            return JSONResponse(content={"has_face": True, "dominant": "Neutral", "confidence": 95})
+            return JSONResponse(content={"has_face": False, "dominant": "Searching...", "confidence": 0})
 
         header, encoded = payload.image.split(",", 1)
         image_bytes = base64.b64decode(encoded)
 
-        if fer_detector is not None and cv2 is not None:
+        if cv2 is not None:
             nparr = np.frombuffer(image_bytes, np.uint8)
             frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            if frame is not None:
-                emotions_result = fer_detector.detect_emotions(frame)
-                if emotions_result and len(emotions_result) > 0:
-                    emo_dict = emotions_result[0]["emotions"]
-                    dom_emotion = max(emo_dict, key=emo_dict.get).capitalize()
-                    score = round(float(emo_dict[max(emo_dict, key=emo_dict.get)]) * 100)
-                    emotions_map = {k: round(float(v), 3) for k, v in emo_dict.items()}
-                    return JSONResponse(content={
-                        "has_face": True,
-                        "dominant": dom_emotion,
-                        "confidence": score,
-                        "emotions": emotions_map
-                    })
 
-        # Built-in High-Accuracy TensorFlow Logit Inference Engine
+            if frame is not None:
+                # 1. Try FER detector if loaded
+                if fer_detector is not None:
+                    try:
+                        emotions_result = fer_detector.detect_emotions(frame)
+                        if emotions_result and len(emotions_result) > 0:
+                            f_box = emotions_result[0]["box"]  # [x, y, w, h]
+                            emo_dict = emotions_result[0]["emotions"]
+                            dom_emotion = max(emo_dict, key=emo_dict.get).capitalize()
+                            score = round(float(emo_dict[max(emo_dict, key=emo_dict.get)]) * 100)
+                            emotions_map = {k: round(float(v), 3) for k, v in emo_dict.items()}
+                            return JSONResponse(content={
+                                "has_face": True,
+                                "dominant": dom_emotion,
+                                "confidence": score,
+                                "box": [int(f_box[0]), int(f_box[1]), int(f_box[2]), int(f_box[3])],
+                                "emotions": emotions_map
+                            })
+                    except Exception:
+                        pass
+
+                # 2. Fallback to OpenCV Haar Cascade face detection
+                if face_cascade is not None and not face_cascade.empty():
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(60, 60))
+
+                    if len(faces) > 0:
+                        (fx, fy, fw, fh) = faces[0]
+
+                        # Analyze facial region dynamics (lower mouth region & upper eye region)
+                        roi_gray = gray[fy:fy+fh, fx:fx+fw]
+                        roi_h, roi_w = roi_gray.shape
+
+                        mouth_roi = roi_gray[int(roi_h * 0.65):, :]
+                        mouth_std = float(np.std(mouth_roi))
+
+                        eye_roi = roi_gray[int(roi_h * 0.2):int(roi_h * 0.45), :]
+                        eye_std = float(np.std(eye_roi))
+
+                        smile_val = max(0.0, (mouth_std - 32.0) / 35.0)
+                        surprise_val = max(0.0, (eye_std - 42.0) / 28.0)
+                        neutral_val = max(0.2, 1.4 - smile_val - surprise_val)
+
+                        raw_logits = [smile_val * 3.5, surprise_val * 2.5, neutral_val, 0.05, 0.05, 0.02, 0.01]
+                        exps = [np.exp(l) for l in raw_logits]
+                        sum_e = sum(exps)
+                        probs = [e / sum_e for e in exps]
+
+                        emotions_map = {
+                            'happy': round(float(probs[0]), 3),
+                            'surprise': round(float(probs[1]), 3),
+                            'neutral': round(float(probs[2]), 3),
+                            'sad': round(float(probs[3]), 3),
+                            'angry': round(float(probs[4]), 3),
+                            'fear': round(float(probs[5]), 3),
+                            'disgust': round(float(probs[6]), 3)
+                        }
+
+                        dom_idx = int(np.argmax(probs))
+                        names = ['Happy', 'Surprise', 'Neutral', 'Sad', 'Angry', 'Fear', 'Disgust']
+                        dom = names[dom_idx]
+                        conf = round(float(probs[dom_idx]) * 100)
+
+                        return JSONResponse(content={
+                            "has_face": True,
+                            "dominant": dom,
+                            "confidence": conf,
+                            "box": [int(fx), int(fy), int(fw), int(fh)],
+                            "emotions": emotions_map
+                        })
+
         return JSONResponse(content={
-            "has_face": True,
-            "dominant": "Neutral",
-            "confidence": 95,
-            "emotions": {'happy': 0.02, 'surprise': 0.01, 'neutral': 0.95, 'sad': 0.01, 'angry': 0.01, 'fear': 0.0, 'disgust': 0.0}
+            "has_face": False,
+            "dominant": "Searching...",
+            "confidence": 0,
+            "emotions": {'happy': 0.0, 'surprise': 0.0, 'neutral': 1.0, 'sad': 0.0, 'angry': 0.0, 'fear': 0.0, 'disgust': 0.0}
         })
 
     except Exception as e:
-        return JSONResponse(content={"has_face": True, "dominant": "Neutral", "confidence": 95, "error": str(e)})
+        return JSONResponse(content={"has_face": False, "dominant": "Neutral", "confidence": 0, "error": str(e)})
 
 @app.post("/api/predict_emotion")
 async def predict_emotion(payload: EmotionPredictPayload):
